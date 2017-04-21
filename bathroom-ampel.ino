@@ -17,27 +17,28 @@ const PROGMEM char* CLIENT_ID = "bathroom-traffic";
 const PROGMEM int OTA_PORT = 8266;
 const PROGMEM char* DEFAULT_PW = "****";
 const PROGMEM char* MQTT_SERVER_IP = "****";
+const PROGMEM char* MQTT_FALLBACK_SERVER_IP = "****";
 const PROGMEM uint16_t MQTT_SERVER_PORT = 1883;
-const PROGMEM char* MQTT_USER = "home-assistant";
+const PROGMEM char* MQTT_USER = "****";
 const PROGMEM char* MQTT_PASSWORD = "****";
 // CREDENTIALS SECTION - END
 
 String bathroomIp = "192.168.0.121";
 
-const PROGMEM char* MQTT_LIGHT_COMMAND_TOPIC = "home-assistant/bathroom/traffic/set";
-const PROGMEM char* MQTT_LIGHT_STATE_TOPIC = "home-assistant/bathroom/traffic/status";
-const PROGMEM char* MQTT_NIGHT_MODE_TOPIC = "home-assistant/nightmode";
+const PROGMEM char* LIGHT_COMMAND_TOPIC = "home-assistant/bathroom/traffic/set";
+const PROGMEM char* LIGHT_STATE_TOPIC = "home-assistant/bathroom/traffic/status";
+const PROGMEM char* NIGHT_MODE_TOPIC = "home-assistant/nightmode";
+const PROGMEM char* PANIC_TOPIC = "home-assistant/panic";
 
-const PROGMEM char* MQTT_ESP_BATHROOM_STATE_TOPIC = "home-assistant/esp/bathroom/status";
-const PROGMEM char* MQTT_ESP_BATHROOM_IP_TOPIC = "home-assistant/esp/bathroom/ip";
+const PROGMEM char* ESP_BATHROOM_STATE_TOPIC = "home-assistant/esp/bathroom/status";
+const PROGMEM char* ESP_BATHROOM_IP_TOPIC = "home-assistant/esp/bathroom/ip";
 
-const PROGMEM char* MQTT_ESP_STATE_TOPIC = "home-assistant/esp/traffic/status";
-const PROGMEM char* MQTT_ESP_IP_TOPIC = "home-assistant/esp/traffic/ip";
+const PROGMEM char* ESP_STATE_TOPIC = "home-assistant/esp/traffic/status";
+const PROGMEM char* ESP_IP_TOPIC = "home-assistant/esp/traffic/ip";
 
-const PROGMEM char* MQTT_SPOTS_STATE_TOPIC = "home-assistant/bathroom/spots/status";
-const PROGMEM char* MQTT_STRIPES_STATE_TOPIC = "home-assistant/bathroom/stripes/status";
+const PROGMEM char* SPOTS_STATE_TOPIC = "home-assistant/bathroom/spots/status";
+const PROGMEM char* STRIPES_STATE_TOPIC = "home-assistant/bathroom/stripes/status";
 
-// buffer used to send/receive data with MQTT
 const uint8_t MSG_BUFFER_SIZE = 20;
 char m_msg_buffer[MSG_BUFFER_SIZE]; 
 
@@ -55,11 +56,6 @@ byte red = 255;
 byte green = 43;
 byte blue = 0;
 byte brightness = DEFAULT_BRIGHTNESS;
-
-uint8_t myColors[][3] = {{255, 0, 0},   // green
-  {200, 200, 20},   // yellow
-  {0, 255, 0},   // red
-};
 
 boolean occupied;
 int occupiedCount = 0;
@@ -132,8 +128,9 @@ void callback(char* p_topic, byte* p_payload, unsigned int p_length) {
   Serial.print(payload);
   Serial.println("\"");
 
-  // handle message topic
-  if (String(MQTT_NIGHT_MODE_TOPIC).equals(p_topic)) {
+  if (String(PANIC_TOPIC).equals(p_topic)) {
+    handlePanicTopic(payload);
+  } else if (String(NIGHT_MODE_TOPIC).equals(p_topic)) {
     if (payload.equals(String(NIGHT_MODE_ON))) {
       Serial.println("Night mode switched on!");
       // nightMode = true;
@@ -143,9 +140,9 @@ void callback(char* p_topic, byte* p_payload, unsigned int p_length) {
       nightMode = false;
       trafficLightState = true;
     }
-  } else if (String(MQTT_ESP_BATHROOM_IP_TOPIC).equals(p_topic)) {
-    bathroomIp = (String)payload;
-  } else if (String(MQTT_LIGHT_COMMAND_TOPIC).equals(p_topic)) {
+  } else if (String(ESP_BATHROOM_IP_TOPIC).equals(p_topic)) {
+    bathroomIp = (String) payload;
+  } else if (String(LIGHT_COMMAND_TOPIC).equals(p_topic)) {
     // test if the payload is equal to "ON" or "OFF"
     char message[p_length + 1];
     for (uint8_t i = 0; i < p_length; i++) {
@@ -275,8 +272,8 @@ void loop() {
     IPAddress ipAddress = WiFi.localIP();
     String ipString = IpAddress2String(ipAddress);
       
-    client.publish(MQTT_ESP_STATE_TOPIC, "online", true);
-    client.publish(MQTT_ESP_IP_TOPIC, ipString.c_str(), true);
+    client.publish(ESP_STATE_TOPIC, "online", true);
+    client.publish(ESP_IP_TOPIC, ipString.c_str(), true);
   }
 
   if (panicMode == true) {
@@ -445,9 +442,9 @@ void publishBathroomOfflineStates() {
   char buffer[root.measureLength() + 1];
   root.printTo(buffer, sizeof(buffer));
 
-  client.publish(MQTT_STRIPES_STATE_TOPIC, buffer, true);
-  client.publish(MQTT_ESP_BATHROOM_STATE_TOPIC, "offline", true);
-  client.publish(MQTT_SPOTS_STATE_TOPIC, "OFF", true);
+  client.publish(STRIPES_STATE_TOPIC, buffer, true);
+  client.publish(ESP_BATHROOM_STATE_TOPIC, "offline", true);
+  client.publish(SPOTS_STATE_TOPIC, "OFF", true);
 }
 
 void setColor() {
@@ -466,9 +463,10 @@ void reconnect() {
     // Attempt to connect
     if (client.connect(CLIENT_ID, MQTT_USER, MQTT_PASSWORD)) {
       Serial.println("INFO: connected");
-      client.subscribe(MQTT_LIGHT_COMMAND_TOPIC);
-      client.subscribe(MQTT_NIGHT_MODE_TOPIC);
-      client.subscribe(MQTT_ESP_BATHROOM_IP_TOPIC);
+      client.subscribe(PANIC_TOPIC);
+      client.subscribe(LIGHT_COMMAND_TOPIC);
+      client.subscribe(NIGHT_MODE_TOPIC);
+      client.subscribe(ESP_BATHROOM_IP_TOPIC);
     } else {
       Serial.print("ERROR: failed, rc=");
       Serial.println(client.state());
@@ -495,7 +493,7 @@ void publishTrafficLightState() {
   char buffer[root.measureLength() + 1];
   root.printTo(buffer, sizeof(buffer));
 
-  client.publish(MQTT_LIGHT_STATE_TOPIC, buffer, true);
+  client.publish(LIGHT_STATE_TOPIC, buffer, true);
 }
 
 void around(uint32_t color) {
